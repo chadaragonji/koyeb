@@ -110,48 +110,80 @@ def ws_endpoint(ws):
 
 ## Util1
 
+# def update_base_candle_deque(incoming_tick):
+#     """
+#     Processes an incoming tick to update the 5-second candle.
+#     If the tick falls within the current 5-second bucket, the candle is updated;
+#     otherwise, a new candle is created.
+#     After updating, sends the updated candle to the active WebSocket if connected.
+#     """
+#     global base_candle_deque, active_ws
+    
+#     # Convert tick's exchange feed time to an integer timestamp
+#     tick_dt = datetime.utcfromtimestamp(incoming_tick["exch_feed_time"]).replace(microsecond=0)
+#     tick_timestamp = int(tick_dt.timestamp())
+#     # Determine the 5-second bucket
+#     bucket_time = tick_timestamp - (tick_timestamp % 5)
+    
+#     if base_candle_deque and base_candle_deque[-1]['time'] == bucket_time:
+#         # Update the existing candle
+#         last_candle = base_candle_deque[-1]
+#         last_candle['high'] = max(last_candle['high'], last_candle["ltp"])
+#         last_candle['low'] = min(last_candle['low'], last_candle["ltp"])
+#         last_candle['close'] = incoming_tick["ltp"]
+#         updated_candle = last_candle
+#     else:
+#         # Create a new candle for a new 5-second bucket
+#         new_candle = {
+#             'time': bucket_time,
+#             'open': incoming_tick["ltp"],
+#             'high': incoming_tick["ltp"],
+#             'low': incoming_tick["ltp"],
+#             'close': incoming_tick["ltp"]
+#         }
+#         base_candle_deque.append(new_candle)
+#         updated_candle = new_candle
+
+#     # Send the updated candle to the active WebSocket if connected
+#     if active_ws:
+#         try:
+#             active_ws.send(json.dumps({'candle': updated_candle}, default=str))
+#         except Exception as e:
+#             logger.error(f"Error sending to WebSocket: {e}")
+#             active_ws = None
+
 def update_base_candle_deque(incoming_tick):
-    """
-    Processes an incoming tick to update the 5-second candle.
-    If the tick falls within the current 5-second bucket, the candle is updated;
-    otherwise, a new candle is created.
-    After updating, sends the updated candle to the active WebSocket if connected.
-    """
     global base_candle_deque, active_ws
-    
-    # Convert tick's exchange feed time to an integer timestamp
-    tick_dt = datetime.utcfromtimestamp(incoming_tick["exch_feed_time"]).replace(microsecond=0)
-    tick_timestamp = int(tick_dt.timestamp())
-    # Determine the 5-second bucket
-    bucket_time = tick_timestamp - (tick_timestamp % 5)
-    
+
+    # incoming_tick["exch_feed_time"] is IST‑based epoch
+    utc_ts = int(incoming_tick["exch_feed_time"]) - 19800
+    # bucket it on 5s
+    bucket_time = utc_ts - (utc_ts % 5)
+
+    price = incoming_tick["ltp"]
     if base_candle_deque and base_candle_deque[-1]['time'] == bucket_time:
-        # Update the existing candle
-        last_candle = base_candle_deque[-1]
-        last_candle['high'] = max(last_candle['high'], last_candle["ltp"])
-        last_candle['low'] = min(last_candle['low'], last_candle["ltp"])
-        last_candle['close'] = incoming_tick["ltp"]
-        updated_candle = last_candle
+        last = base_candle_deque[-1]
+        last['high']  = max(last['high'], price)
+        last['low']   = min(last['low'],  price)
+        last['close'] = price
+        updated = last
     else:
-        # Create a new candle for a new 5-second bucket
         new_candle = {
-            'time': bucket_time,
-            'open': incoming_tick["ltp"],
-            'high': incoming_tick["ltp"],
-            'low': incoming_tick["ltp"],
-            'close': incoming_tick["ltp"]
+            'time':  bucket_time,
+            'open':  price,
+            'high':  price,
+            'low':   price,
+            'close': price
         }
         base_candle_deque.append(new_candle)
-        updated_candle = new_candle
+        updated = new_candle
 
-    # Send the updated candle to the active WebSocket if connected
     if active_ws:
         try:
-            active_ws.send(json.dumps({'candle': updated_candle}, default=str))
+            active_ws.send(json.dumps({'candle': updated}, default=str))
         except Exception as e:
             logger.error(f"Error sending to WebSocket: {e}")
             active_ws = None
-
 
 
 ## Util2 
@@ -702,34 +734,34 @@ def stop_main():
             logger.error("Error closing WebSocket connection: %s", e)
 
 
-# main()
+main()
 
 ###################################################### Scheduler Setup #######################################################
-from apscheduler.schedulers.background import BackgroundScheduler
-scheduler = BackgroundScheduler(daemon=True)
+# from apscheduler.schedulers.background import BackgroundScheduler
+# scheduler = BackgroundScheduler(daemon=True)
 
-# Schedule main() to start the WebSocket client (adjust the time as needed)
-scheduler.add_job(
-    main,
-    'cron',
-    day_of_week='mon-fri',
-    hour=9,
-    minute=14,
-    timezone='Asia/Kolkata'
-)
+# # Schedule main() to start the WebSocket client (adjust the time as needed)
+# scheduler.add_job(
+#     main,
+#     'cron',
+#     day_of_week='mon-fri',
+#     hour=9,
+#     minute=14,
+#     timezone='Asia/Kolkata'
+# )
 
-# Schedule stop_main() to close the connection at a specified time
-scheduler.add_job(
-    stop_main,
-    'cron',
-    day_of_week='mon-fri',
-    hour=15,
-    minute=31,
-    timezone='Asia/Kolkata',
-    id='stop_main'
-)
+# # Schedule stop_main() to close the connection at a specified time
+# scheduler.add_job(
+#     stop_main,
+#     'cron',
+#     day_of_week='mon-fri',
+#     hour=15,
+#     minute=31,
+#     timezone='Asia/Kolkata',
+#     id='stop_main'
+# )
 
-scheduler.start()
+# scheduler.start()
 
 ###################################################### Start Flask App #######################################################
 port = int(os.getenv('PORT', 80))
