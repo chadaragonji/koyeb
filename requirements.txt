@@ -5,12 +5,5 @@ itsdangerous==2.1.2
 Jinja2==3.1.2
 MarkupSafe==2.1.1
 Werkzeug==2.2.2
-psycopg2==2.9.10
-flask-cors==5.0.0
-pandas==2.2.3
-websocket-client==1.6.1
-flask-sock==0.7.0
-fyers_apiv3==3.1.5
-APScheduler==3.11.0
-pyotp==2.9.0
-loguru==0.7.3
+markdown2
+
