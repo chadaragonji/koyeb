@@ -2,6 +2,7 @@ from flask import Flask, request, redirect, url_for, render_template_string, jso
 import os
 import markdown2
 import re
+import glob
 
 app = Flask(__name__)
 DATA_DIR = '/var/lib/data'
@@ -20,6 +21,35 @@ def render_markdown(content):
     )
     html = re.sub(r'\[\[([^\]]+)\]\]', r'<a href="/page/\1">\1</a>', html)
     return html
+
+def get_all_pages():
+    """Get all page names from the data directory"""
+    pages = []
+    for file_path in glob.glob(os.path.join(DATA_DIR, "*.md")):
+        page_name = os.path.basename(file_path)[:-3]  # Remove .md extension
+        page_name = page_name.replace('_', '/')  # Convert back from safe filename
+        pages.append(page_name)
+    return pages
+
+def find_backlinks(target_page):
+    """Find all pages that link to the target page"""
+    backlinks = []
+    all_pages = get_all_pages()
+    
+    for page in all_pages:
+        if page == target_page:
+            continue
+            
+        file_path = get_markdown_file(page)
+        if os.path.exists(file_path):
+            with open(file_path, 'r') as f:
+                content = f.read()
+                
+            # Look for [[target_page]] links
+            if f'[[{target_page}]]' in content:
+                backlinks.append(page)
+    
+    return backlinks
 
 @app.route('/')
 def index():
@@ -42,6 +72,7 @@ def view_page(page):
         content = f.read()
 
     rendered = render_markdown(content)
+    backlinks = find_backlinks(page)
 
     return render_template_string("""
 <!DOCTYPE html>
@@ -56,6 +87,29 @@ def view_page(page):
         textarea { width: 100%; height: 300px; font-family: monospace; font-size: 14px; }
         #preview { border: 1px solid #ccc; padding: 1em; margin-top: 1em; background: #f9f9f9; }
         a { color: blue; text-decoration: underline; }
+        .backlinks { 
+            margin-top: 2em; 
+            padding: 1em; 
+            background: #f0f0f0; 
+            border-radius: 4px;
+            border-left: 4px solid #007acc;
+        }
+        .backlinks h3 { 
+            margin-top: 0; 
+            color: #333;
+            font-size: 1.1em;
+        }
+        .backlinks ul { 
+            margin: 0.5em 0; 
+            padding-left: 1.5em;
+        }
+        .backlinks li { 
+            margin: 0.3em 0; 
+        }
+        .no-backlinks {
+            color: #666;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -65,6 +119,19 @@ def view_page(page):
         <button type="submit">💾 Save</button>
     </form>
     <div id="preview">{{ rendered|safe }}</div>
+    
+    <div class="backlinks">
+        <h3>📎 Backlinks</h3>
+        {% if backlinks %}
+            <ul>
+                {% for backlink in backlinks %}
+                    <li><a href="/page/{{ backlink }}">{{ backlink }}</a></li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="no-backlinks">No pages link to this page yet.</p>
+        {% endif %}
+    </div>
 
     <script>
         const textarea = document.getElementById("editor");
@@ -99,7 +166,7 @@ def view_page(page):
     </script>
 </body>
 </html>
-""", page=page, content=content, rendered=rendered)
+""", page=page, content=content, rendered=rendered, backlinks=backlinks)
 
 @app.route('/preview', methods=['POST'])
 def live_preview():
@@ -108,7 +175,40 @@ def live_preview():
     html = render_markdown(content)
     return jsonify({'html': html})
 
-
+@app.route('/pages')
+def list_pages():
+    """List all pages in the wiki"""
+    pages = get_all_pages()
+    pages.sort()
+    
+    return render_template_string("""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>All Pages</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: sans-serif; margin: 2em; }
+        a { color: blue; text-decoration: underline; }
+        .page-list { list-style-type: none; padding: 0; }
+        .page-list li { margin: 0.5em 0; padding: 0.5em; background: #f9f9f9; border-radius: 4px; }
+        .page-count { color: #666; font-size: 0.9em; margin-bottom: 1em; }
+    </style>
+</head>
+<body>
+    <h1>📚 All Pages</h1>
+    <div class="page-count">{{ pages|length }} pages total</div>
+    
+    <ul class="page-list">
+        {% for page in pages %}
+            <li><a href="/page/{{ page }}">{{ page }}</a></li>
+        {% endfor %}
+    </ul>
+    
+    <p><a href="/page/Home">← Back to Home</a></p>
+</body>
+</html>
+""", pages=pages)
 
 ###################################################### Start Flask App #######################################################
 port = int(os.getenv('PORT', 80))
